@@ -17,7 +17,11 @@ func main() {
 	// エラー情報を入れるChannel
 	c := make(chan string)
 	for i := 0; i < 10; i++ {
-		go eternalAddElement(c)
+		if i%10 == 0 {
+			go addElementWithTTL(c)
+		} else {
+			go addEternalElement(c)
+		}
 	}
 	defer close(c)
 
@@ -40,7 +44,7 @@ func main() {
 }
 
 // 延々とアイテムを詰め続ける
-func eternalAddElement(c chan string) {
+func addEternalElement(c chan string) {
 	redisHost := os.Getenv("REDIS_URL")
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
@@ -59,19 +63,13 @@ func eternalAddElement(c chan string) {
 			c <- err.Error()
 		}
 
-		ttl := calcTTL()
-		switch ttl {
-		case 60:
-			// 1024文字のランダム文字列を指定のTTLで登録
-			_, err = conn.Do("SET", key, randomStringRunes(1024), "EX", ttl)
-		default:
-			// TTLなしで1024文字を登録
-			_, err = conn.Do("SET", key, randomStringRunes(1024))
-		}
+		// TTLなしで1024文字を登録
+		_, err = conn.Do("SET", key, randomStringRunes(1024))
+
 		if err != nil {
-			// Errorが出たらChannelにエラーを突っ込んで1秒待つ
+			// Errorが出たらChannelにエラーを突っ込んで処理をforから脱出
 			c <- err.Error()
-			time.Sleep(1 * time.Second)
+			break
 		} else {
 			// 10ms Sleep
 			time.Sleep(10 * time.Millisecond)
@@ -79,14 +77,42 @@ func eternalAddElement(c chan string) {
 	}
 }
 
-func calcTTL() int {
-	t := time.Now().Unix() % 10
-	fmt.Println(t)
-	if t < 2 {
-		// 1/5でTTL無限
-		return -1
+// TTL is time to live for redis item
+const TTL = 18000
+
+func addElementWithTTL(c chan string) {
+
+	redisHost := os.Getenv("REDIS_URL")
+	// Open Database index 0
+	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
+
+	// Add element
+	u, err := uuid.NewRandom()
+	key := u.String()
+	if err != nil {
+		c <- err.Error()
 	}
-	return 60
+
+	if err != nil {
+		// エラー通知
+		c <- err.Error()
+		return
+	}
+	defer conn.Close()
+
+	for {
+		// 1024文字のランダム文字列を指定のTTLで登録
+		_, err = conn.Do("SET", key, randomStringRunes(1024), "EX", TTL)
+
+		if err != nil {
+			// Errorが出たらChannelにエラーを突っ込んで処理をforから脱出
+			c <- err.Error()
+			break
+		} else {
+			// 10ms Sleep
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 }
 
 func setAndExpire(conn redis.Conn) string {
