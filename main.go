@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -14,13 +15,19 @@ var lettersRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0
 
 func main() {
 
+	redisHost := os.Getenv("REDIS_URL")
+	redisHost = strings.TrimSpace(redisHost)
+	if redisHost == "" {
+		redisHost = "localhost:6379"
+	}
+
 	// エラー情報を入れるChannel
-	c := make(chan string)
+	c := make(chan error)
 	for i := 0; i < 10; i++ {
 		if i%10 == 0 {
-			go addElementWithTTL(c)
+			go addElementWithTTL(c, redisHost)
 		} else {
-			go addEternalElement(c)
+			go addEternalElement(c, redisHost)
 		}
 	}
 	defer close(c)
@@ -35,7 +42,7 @@ func main() {
 				// closed
 				return
 			}
-			fmt.Println(e)
+			fmt.Printf("%v\n", e)
 		case <-timeout:
 			fmt.Println("Finished")
 			return
@@ -44,13 +51,13 @@ func main() {
 }
 
 // 延々とアイテムを詰め続ける
-func addEternalElement(c chan string) {
-	redisHost := os.Getenv("REDIS_URL")
+func addEternalElement(c chan error, redisHost string) {
+
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
 	if err != nil {
 		// エラー通知
-		c <- err.Error()
+		c <- err
 		return
 	}
 	defer conn.Close()
@@ -60,7 +67,7 @@ func addEternalElement(c chan string) {
 		u, err := uuid.NewRandom()
 		key := u.String()
 		if err != nil {
-			c <- err.Error()
+			c <- err
 		}
 
 		// TTLなしで1024文字を登録
@@ -68,7 +75,7 @@ func addEternalElement(c chan string) {
 
 		if err != nil {
 			// Errorが出たらChannelにエラーを突っ込んで処理をforから脱出
-			c <- err.Error()
+			c <- err
 			break
 		} else {
 			// 10ms Sleep
@@ -80,9 +87,8 @@ func addEternalElement(c chan string) {
 // TTL is time to live for redis item
 const TTL = 18000
 
-func addElementWithTTL(c chan string) {
+func addElementWithTTL(c chan error, redisHost string) {
 
-	redisHost := os.Getenv("REDIS_URL")
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
 
@@ -90,12 +96,12 @@ func addElementWithTTL(c chan string) {
 	u, err := uuid.NewRandom()
 	key := u.String()
 	if err != nil {
-		c <- err.Error()
+		c <- err
 	}
 
 	if err != nil {
 		// エラー通知
-		c <- err.Error()
+		c <- err
 		return
 	}
 	defer conn.Close()
@@ -106,7 +112,7 @@ func addElementWithTTL(c chan string) {
 
 		if err != nil {
 			// Errorが出たらChannelにエラーを突っ込んで処理をforから脱出
-			c <- err.Error()
+			c <- err
 			break
 		} else {
 			// 10ms Sleep
