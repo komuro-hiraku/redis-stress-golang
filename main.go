@@ -22,7 +22,7 @@ func main() {
 	}
 
 	// エラー情報を入れるChannel
-	c := make(chan string)
+	c := make(chan error)
 	for i := 0; i < 10; i++ {
 		if i%10 == 0 {
 			go addElementWithTTL(c, redisHost)
@@ -42,7 +42,7 @@ func main() {
 				// closed
 				return
 			}
-			fmt.Println(e)
+			fmt.Printf("%v\n", e)
 		case <-timeout:
 			fmt.Println("Finished")
 			return
@@ -51,13 +51,13 @@ func main() {
 }
 
 // 延々とアイテムを詰め続ける
-func addEternalElement(c chan string, redisHost string) {
+func addEternalElement(c chan error, redisHost string) {
 
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
 	if err != nil {
 		// エラー通知
-		c <- err.Error()
+		c <- err
 		return
 	}
 	defer conn.Close()
@@ -67,7 +67,7 @@ func addEternalElement(c chan string, redisHost string) {
 		u, err := uuid.NewRandom()
 		key := u.String()
 		if err != nil {
-			c <- err.Error()
+			c <- err
 		}
 
 		// TTLなしで1024文字を登録
@@ -75,7 +75,7 @@ func addEternalElement(c chan string, redisHost string) {
 
 		if err != nil {
 			// Errorが出たらChannelにエラーを突っ込んで処理をforから脱出
-			c <- err.Error()
+			c <- err
 			break
 		} else {
 			// 10ms Sleep
@@ -87,7 +87,7 @@ func addEternalElement(c chan string, redisHost string) {
 // TTL is time to live for redis item
 const TTL = 18000
 
-func addElementWithTTL(c chan string, redisHost string) {
+func addElementWithTTL(c chan error, redisHost string) {
 
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
@@ -96,12 +96,12 @@ func addElementWithTTL(c chan string, redisHost string) {
 	u, err := uuid.NewRandom()
 	key := u.String()
 	if err != nil {
-		c <- err.Error()
+		c <- err
 	}
 
 	if err != nil {
 		// エラー通知
-		c <- err.Error()
+		c <- err
 		return
 	}
 	defer conn.Close()
@@ -112,7 +112,7 @@ func addElementWithTTL(c chan string, redisHost string) {
 
 		if err != nil {
 			// Errorが出たらChannelにエラーを突っ込んで処理をforから脱出
-			c <- err.Error()
+			c <- err
 			break
 		} else {
 			// 10ms Sleep
