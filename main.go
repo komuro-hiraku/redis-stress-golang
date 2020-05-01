@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -14,13 +15,19 @@ var lettersRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0
 
 func main() {
 
+	redisHost := os.Getenv("REDIS_URL")
+	redisHost = strings.TrimSpace(redisHost)
+	if redisHost == "" {
+		redisHost = "localhost:6379"
+	}
+
 	// エラー情報を入れるChannel
 	c := make(chan string)
 	for i := 0; i < 10; i++ {
 		if i%10 == 0 {
-			go addElementWithTTL(c)
+			go addElementWithTTL(c, redisHost)
 		} else {
-			go addEternalElement(c)
+			go addEternalElement(c, redisHost)
 		}
 	}
 	defer close(c)
@@ -44,8 +51,8 @@ func main() {
 }
 
 // 延々とアイテムを詰め続ける
-func addEternalElement(c chan string) {
-	redisHost := os.Getenv("REDIS_URL")
+func addEternalElement(c chan string, redisHost string) {
+
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
 	if err != nil {
@@ -80,9 +87,8 @@ func addEternalElement(c chan string) {
 // TTL is time to live for redis item
 const TTL = 18000
 
-func addElementWithTTL(c chan string) {
+func addElementWithTTL(c chan string, redisHost string) {
 
-	redisHost := os.Getenv("REDIS_URL")
 	// Open Database index 0
 	conn, err := redis.Dial("tcp", redisHost, redis.DialDatabase(0))
 
